@@ -5,6 +5,11 @@ pub enum Expr {
     Num(f64),
     Call(String, Vec<Expr>),
     Var(String),
+    Def {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        then: Option<Box<Expr>>,
+    },
 
     // - Operations -
 
@@ -16,11 +21,12 @@ pub enum Expr {
     Div(Box<Expr>, Box<Expr>),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
+    // Function
 }
 
 pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
     let ident = text::ident().padded();
-    recursive(|expr| {
+    let expr = recursive(|expr| {
         let int = text::int(10)
             .then(filter(|c: &char| *c == '.' || c.is_ascii_digit()).repeated())
             .foldl(|l, r| l + &r.to_string())
@@ -67,7 +73,33 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                     .repeated(),
             )
             .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
-        sum
-    })
-    .then_ignore(end())
+
+        sum.boxed()
+    });
+
+    let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
+        let decl_t = decl.clone().repeated()
+            .at_most(1);
+        let def_or_implicit = expr
+            .clone()
+            .then_ignore(just('='))
+            .then(expr.clone())
+            .then_ignore(just(';'))
+            .then(decl_t)
+            .map(|((left, right), then)| Expr::Def {
+                left: Box::new(left),
+                right: Box::new(right),
+                then: {
+                    if then.len() == 1 {
+                        Some(Box::new(then[0].clone()))
+                    } else {
+                        None
+                    }
+                },
+            });
+
+        choice((def_or_implicit, expr)).padded().boxed()
+    });
+
+    decl.then_ignore(end())
 }

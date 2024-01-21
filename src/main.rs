@@ -1,3 +1,4 @@
+use crate::compile::compile;
 use crate::parser::Expr;
 use ariadne::{Report, ReportKind, Source, Span};
 use chumsky::error::Simple;
@@ -8,7 +9,7 @@ use rocket::{get, routes, Error, Ignite, Rocket};
 use std::ops::Range;
 use std::process::exit;
 use std::sync::Mutex;
-use crate::compile::compile;
+use rocket::yansi::Paint;
 
 static DATA_OUT: Mutex<Value> = Mutex::new(json! {[]});
 
@@ -16,8 +17,6 @@ mod compile;
 mod parser;
 
 fn main() {
-    // start_server().unwrap();
-
     let src_f = std::env::args().nth(1).unwrap();
     let src_f = src_f.as_str();
     let src = std::fs::read_to_string(src_f).unwrap();
@@ -25,7 +24,10 @@ fn main() {
 
     let mut tok = Expr::Num(0.);
     match parser::parser().parse(src) {
-        Ok(tk) => { tok=tk.clone(); println!("{tk:?}") },
+        Ok(tk) => {
+            tok = tk.clone();
+            println!("{tk:?}")
+        }
         Err(e) => {
             for err in e {
                 Report::<(&str, Range<usize>)>::build(ReportKind::Error, src_f, err.span().start())
@@ -42,7 +44,9 @@ fn main() {
         }
     }
 
-    println!("'{}'", compile(&tok, &vec![]).unwrap());
+    println!("{:#?}", compile(&tok, &vec![]).unwrap());
+
+    // start_server().unwrap();
 }
 
 #[allow(dead_code)]

@@ -1,0 +1,11 @@
+[package]
+name = "desmonic_script"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rocket = { version = "0.5", features= ["json"] }
+chumsky = "0.9"
+ariadne = "0.4"

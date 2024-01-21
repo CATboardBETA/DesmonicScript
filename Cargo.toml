@@ -13,3 +13,4 @@ license = "GPL-3"
 rocket = { version = "0.5", features= ["json"] }
 chumsky = "0.9"
 ariadne = "0.4"
+lazy_static = "1.4.0"

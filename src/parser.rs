@@ -78,8 +78,7 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
     });
 
     let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
-        let decl_t = decl.clone().repeated()
-            .at_most(1);
+        let decl_t = decl.clone().repeated().at_most(1);
         let def_or_implicit = expr
             .clone()
             .then_ignore(just('='))

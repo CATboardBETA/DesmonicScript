@@ -1,6 +1,10 @@
+use std::fs::read_to_string;
+use std::ops::Range;
 use crate::parser::Expr;
+use ariadne::{Report, ReportKind, Source};
+use crate::SRC_F;
 
-pub fn compile(expr: &Expr, vars: &Vec<(String, f64)>) -> Result<Vec<String>, String> {
+pub fn compile(expr: &Expr, vars: &Vec<String>) -> Result<Vec<String>, String> {
     let mut all_latex = vec![];
 
     let mut latex = "".to_owned();
@@ -12,7 +16,16 @@ pub fn compile(expr: &Expr, vars: &Vec<(String, f64)>) -> Result<Vec<String>, St
             subscriptify(name),
             display_params(params)?
         )),
-        Expr::Var(name) => latex.push_str(&subscriptify(name)),
+        Expr::Var(name) => {
+            latex.push_str(&subscriptify(name));
+            if !vars.contains(name) {
+                Report::<(&str, Range<usize>)>::build(ReportKind::Error, SRC_F.as_str(), 0)
+                    .with_message(format!("Variable '{name}' is undefined."))
+                    .finish()
+                    .eprint((SRC_F.as_str(), Source::from(read_to_string(SRC_F.clone()).unwrap())))
+                    .unwrap();
+            }
+        }
         Expr::Neg(ex) => latex.push_str(&format!("-{}", &compile1(ex, vars)?)),
         Expr::Mul(ex1, ex2) => latex.push_str(&format!(
             r"{}\cdot{}",
@@ -38,7 +51,7 @@ pub fn compile(expr: &Expr, vars: &Vec<(String, f64)>) -> Result<Vec<String>, St
             latex.push_str(&format!(
                 r"{}={}",
                 compile1(left, vars)?,
-                compile1(right,vars)?
+                compile1(right, vars)?
             ));
             if let Some(then) = then {
                 all_latex.push(latex.clone());
@@ -58,7 +71,7 @@ pub fn compile(expr: &Expr, vars: &Vec<(String, f64)>) -> Result<Vec<String>, St
 }
 
 // Compile, and if theres more than one latex output, output an error.
-fn compile1(expr: &Expr, vars: &Vec<(String, f64)>) -> Result<String, String> {
+fn compile1(expr: &Expr, vars: &Vec<String>) -> Result<String, String> {
     let comp = compile(expr, vars)?;
 
     let len = comp.len();

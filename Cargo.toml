@@ -1,7 +1,11 @@
 [package]
 name = "desmonic_script"
+description = "Successor to radian628/desmoscript. Functional (hopefully) on the latest version of desmos. "
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/CATboardBETA/DesmonicScript.git"
+license = "GPL-3"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

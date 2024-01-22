@@ -2,11 +2,11 @@ use crate::parser::Expr;
 use crate::SRC_F;
 use ariadne::{Report, ReportKind, Source};
 use std::fs::read_to_string;
-use std::ops::Range;
+use std::ops::{Deref, Range};
 
 pub mod graph_state;
 
-pub fn compile(expr: &Expr, vars: &Vec<String>) -> Result<Vec<String>, String> {
+pub fn compile(expr: &Expr, vars: &mut Vec<String>) -> Result<Vec<String>, String> {
     let mut all_latex = vec![];
 
     let mut latex = "".to_owned();
@@ -16,7 +16,7 @@ pub fn compile(expr: &Expr, vars: &Vec<String>) -> Result<Vec<String>, String> {
         Expr::Call(name, params) => latex.push_str(&format!(
             r"{}\left({}\right)",
             subscriptify(name),
-            display_params(params)?
+            display_params(params, vars)?
         )),
         Expr::Var(name) => {
             latex.push_str(&subscriptify(name));
@@ -58,6 +58,9 @@ pub fn compile(expr: &Expr, vars: &Vec<String>) -> Result<Vec<String>, String> {
                 compile1(left, vars)?,
                 compile1(right, vars)?
             ));
+            // if let Expr::Var(name) = right.deref() {
+            //     vars.push(name.to_string());
+            // }
             if let Some(then) = then {
                 all_latex.push(latex.clone());
                 latex.clear();
@@ -76,7 +79,7 @@ pub fn compile(expr: &Expr, vars: &Vec<String>) -> Result<Vec<String>, String> {
 }
 
 // Compile, and if theres more than one latex output, output an error.
-fn compile1(expr: &Expr, vars: &Vec<String>) -> Result<String, String> {
+fn compile1(expr: &Expr, vars: &mut Vec<String>) -> Result<String, String> {
     let comp = compile(expr, vars)?;
 
     let len = comp.len();
@@ -88,11 +91,11 @@ fn compile1(expr: &Expr, vars: &Vec<String>) -> Result<String, String> {
     }
 }
 
-fn display_params(params: &Vec<Expr>) -> Result<String, String> {
+fn display_params(params: &Vec<Expr>, vars: &mut Vec<String>) -> Result<String, String> {
     let mut out = "".to_owned();
 
     for (i, param) in params.iter().enumerate() {
-        let param = compile1(param, &vec![])?;
+        let param = compile1(param, vars)?;
         if i < params.len() - 1 {
             out.push_str(&format!("{param},"))
         } else {

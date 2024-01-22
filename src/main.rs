@@ -1,15 +1,14 @@
 use crate::compile::compile;
 use crate::compile::graph_state::ToGraphStateJson;
-use ariadne::{Report, ReportKind, Source, Span};
+use ariadne::{Label, Report, ReportKind, Source, Span};
 use chumsky::prelude::Parser;
 use lazy_static::lazy_static;
 use rocket::serde::json::serde_json::json;
 use rocket::serde::json::Value;
 use rocket::{get, routes, Error, Ignite, Rocket, Request, Response};
-use std::ops::{Deref, Range};
+use std::ops::Range;
 use std::process::exit;
 use std::sync::Mutex;
-use rocket::http::hyper::header;
 use rocket::response::Responder;
 
 static DATA_OUT: Mutex<Value> = Mutex::new(json! {[]});
@@ -34,12 +33,13 @@ fn main() {
         }
         Err(e) => {
             for err in e {
-                Report::<(&str, Range<usize>)>::build(ReportKind::Error, src_f, err.span().start())
+                Report::build(ReportKind::Error, src_f, err.span().start())
                     .with_message(&format!(
-                        "Expected {:?}, but fount {:?}!",
+                        "Expected {:?}, but found {:?}!",
                         err.expected().collect::<Vec<_>>(),
                         err.found().unwrap_or(&'Ø')
                     ))
+                    .with_label(Label::new((src_f, err.span())).with_message("Found here"))
                     .finish()
                     .eprint((src_f, Source::from(src)))
                     .unwrap();
@@ -48,7 +48,7 @@ fn main() {
         }
     }
 
-    let compiled = compile(&tok, &vec![]).unwrap();
+    let compiled = compile(&tok, &mut vec!["x".to_owned(),"y".to_owned()]).unwrap();
     println!("{:#?}", compiled);
     *DATA_OUT.lock().unwrap() = compiled.into_graph_state();
     start_server().unwrap();

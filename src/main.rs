@@ -1,16 +1,16 @@
 use crate::compile::compile;
-use crate::parser::Expr;
+use crate::compile::graph_state::ToGraphStateJson;
 use ariadne::{Report, ReportKind, Source, Span};
-use chumsky::error::Simple;
 use chumsky::prelude::Parser;
 use lazy_static::lazy_static;
 use rocket::serde::json::serde_json::json;
 use rocket::serde::json::Value;
-use rocket::yansi::Paint;
-use rocket::{get, routes, Error, Ignite, Rocket};
-use std::ops::Range;
+use rocket::{get, routes, Error, Ignite, Rocket, Request, Response};
+use std::ops::{Deref, Range};
 use std::process::exit;
 use std::sync::Mutex;
+use rocket::http::hyper::header;
+use rocket::response::Responder;
 
 static DATA_OUT: Mutex<Value> = Mutex::new(json! {[]});
 
@@ -26,7 +26,7 @@ fn main() {
     let src = std::fs::read_to_string(src_f).unwrap();
     let src = src.as_str();
 
-    let mut tok = Expr::Num(0.);
+    let tok;
     match parser::parser().parse(src) {
         Ok(tk) => {
             tok = tk.clone();
@@ -48,15 +48,26 @@ fn main() {
         }
     }
 
-    println!("{:#?}", compile(&tok, &vec![]).unwrap());
-
-    // start_server().unwrap();
+    let compiled = compile(&tok, &vec![]).unwrap();
+    println!("{:#?}", compiled);
+    *DATA_OUT.lock().unwrap() = compiled.into_graph_state();
+    start_server().unwrap();
 }
 
 #[allow(dead_code)]
 #[get("/data")]
-fn data() -> Value {
-    DATA_OUT.lock().unwrap().clone()
+fn data() -> GraphStateResponse<Value> {
+    GraphStateResponse(DATA_OUT.lock().unwrap().to_owned())
+}
+
+struct GraphStateResponse<R>(pub R);
+
+impl<'r, 'o: 'r, R: Responder<'r, 'o>> Responder<'r, 'o> for GraphStateResponse<R> {
+    fn respond_to(self, req: &'r Request<'_>) -> rocket::response::Result<'o> {
+        Response::build_from(self.0.respond_to(req)?)
+            .raw_header("Access-Control-Allow-Origin","*")
+            .ok()
+    }
 }
 
 fn start_server() -> Result<Rocket<Ignite>, Error> {

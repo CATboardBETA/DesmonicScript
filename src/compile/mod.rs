@@ -1,8 +1,10 @@
+use crate::parser::Expr;
+use crate::SRC_F;
+use ariadne::{Report, ReportKind, Source};
 use std::fs::read_to_string;
 use std::ops::Range;
-use crate::parser::Expr;
-use ariadne::{Report, ReportKind, Source};
-use crate::SRC_F;
+
+pub mod graph_state;
 
 pub fn compile(expr: &Expr, vars: &Vec<String>) -> Result<Vec<String>, String> {
     let mut all_latex = vec![];
@@ -22,7 +24,10 @@ pub fn compile(expr: &Expr, vars: &Vec<String>) -> Result<Vec<String>, String> {
                 Report::<(&str, Range<usize>)>::build(ReportKind::Error, SRC_F.as_str(), 0)
                     .with_message(format!("Variable '{name}' is undefined."))
                     .finish()
-                    .eprint((SRC_F.as_str(), Source::from(read_to_string(SRC_F.clone()).unwrap())))
+                    .eprint((
+                        SRC_F.as_str(),
+                        Source::from(read_to_string(SRC_F.clone()).unwrap()),
+                    ))
                     .unwrap();
             }
         }

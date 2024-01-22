@@ -14,3 +14,5 @@ rocket = { version = "0.5", features= ["json"] }
 chumsky = "0.9"
 ariadne = "0.4"
 lazy_static = "1.4.0"
+serde = "1.0.195"
+rand = "0.8.5"

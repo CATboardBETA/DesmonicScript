@@ -205,7 +205,9 @@ dependencies = [
  "ariadne",
  "chumsky",
  "lazy_static",
+ "rand",
  "rocket",
+ "serde",
 ]
 
 [[package]]

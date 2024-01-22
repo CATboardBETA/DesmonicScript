@@ -30,7 +30,7 @@
     document.body.appendChild(container);
 
     const urlInput = document.createElement("textarea");
-    urlInput.value = "http://localhost:3000/data";
+    urlInput.value = "http://localhost:8000/data";
     container.appendChild(urlInput);
 
     const getVersion = async () => await (await fetch(urlInput.value + "/version")).text();

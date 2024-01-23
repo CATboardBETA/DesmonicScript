@@ -74,7 +74,7 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             )
             .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
 
-        sum.boxed()
+        sum
     });
 
     let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
@@ -83,7 +83,6 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             .clone()
             .then_ignore(just('='))
             .then(expr.clone())
-            .then_ignore(just(';'))
             .then(decl_t)
             .map(|((left, right), then)| Expr::Def {
                 left: Box::new(left),
@@ -97,7 +96,7 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                 },
             });
 
-        choice((def_or_implicit, expr)).padded().boxed()
+        choice((def_or_implicit, expr)).then(just(';').repeated().at_least(1)).foldl(|lhs, _| lhs).padded().boxed()
     });
 
     decl.then_ignore(end())

@@ -1,3 +1,4 @@
+use crate::compile::Latex;
 use rand::Rng;
 use rocket::serde::json::{to_value, Value};
 use serde::de::Visitor;
@@ -8,13 +9,38 @@ pub trait ToGraphStateJson {
     fn into_graph_state(self) -> Value;
 }
 
-impl<S: ToString> ToGraphStateJson for Vec<S> {
+impl ToGraphStateJson for Vec<Latex> {
     //noinspection SpellCheckingInspection
     fn into_graph_state(self) -> Value {
-        let s = self
+        let mut folders = self
             .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>();
+            .filter(|l: &&Latex| l.inner == "\\folder".to_owned())
+            .map(|l: &Latex| Expression::Folder {
+                id: l.clone().id,
+                title: {
+                    let s = l.inner.trim_start_matches("\\folder");
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_owned())
+                    }
+                },
+                other: Default::default(),
+            })
+            .collect::<Vec<_>>();
+
+        let mut expressions = self
+            .iter()
+            .map(|l: &Latex| Expression::Expression {
+                id: (&l).id.parse().expect("Failed to parse id"),
+                latex: Some(l.clone().inner),
+                color: None,
+                folder_id: l.clone().folder_id,
+                other: Default::default(),
+            })
+            .collect::<Vec<_>>();
+
+        expressions.append(&mut folders);
 
         to_value(GraphState {
             version: 11,
@@ -33,18 +59,7 @@ impl<S: ToString> ToGraphStateJson for Vec<S> {
                 y_axis_numbers: true,
                 polar_numbers: false,
             },
-            expressions: Expressions {
-                list: s
-                    .iter()
-                    .enumerate()
-                    .map(|(id, string)| Expression::Expression {
-                        id: (id + 1) as u32,
-                        latex: Some(string.clone()),
-                        color: None,
-                        other: Default::default(),
-                    })
-                    .collect::<Vec<Expression>>(),
-            },
+            expressions: Expressions { list: expressions },
         })
         .unwrap()
     }
@@ -94,6 +109,13 @@ pub enum Expression {
         id: u32,
         latex: Option<String>,
         color: Option<Color>,
+        folder_id: Option<String>,
+        #[serde(flatten)]
+        other: HashMap<String, Value>,
+    },
+    Folder {
+        id: String,
+        title: Option<String>,
         #[serde(flatten)]
         other: HashMap<String, Value>,
     },
@@ -106,7 +128,7 @@ where
 {
     deserializer.deserialize_str(StrIntVisitor {})
 }
-pub struct StrIntVisitor {}
+pub struct StrIntVisitor;
 impl<'de> Visitor<'de> for StrIntVisitor {
     type Value = u32;
 

@@ -3,11 +3,15 @@ use chumsky::prelude::*;
 #[derive(Debug, Clone)]
 pub enum Expr {
     Num(f64),
-    Call(String, Vec<Expr>),
     Var(String),
     Def {
         left: Box<Expr>,
         right: Box<Expr>,
+        then: Option<Box<Expr>>,
+    },
+    Fol {
+        title: String,
+        body: Vec<Expr>,
         then: Option<Box<Expr>>,
     },
 
@@ -21,7 +25,9 @@ pub enum Expr {
     Div(Box<Expr>, Box<Expr>),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
+
     // Function
+    Call(String, Vec<Expr>),
 }
 
 pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
@@ -74,11 +80,33 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             )
             .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
 
-        sum
+        sum.boxed()
     });
 
     let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
         let decl_t = decl.clone().repeated().at_most(1);
+
+        let folder = text::keyword("fold")
+            .ignore_then(
+                none_of("\\\"")
+                    .repeated()
+                    .collect::<String>()
+                    .delimited_by(just('"'), just('"'))
+            )
+            .then(decl.repeated().delimited_by(just('{'), just('}')))
+            .then(decl_t.clone())
+            .map(|((title, body), then)| Expr::Fol {
+                title: dbg!(title),
+                body: dbg!(body),
+                then: {
+                    if then.len() == 1 {
+                        Some(Box::new(then[0].clone()))
+                    } else {
+                        None
+                    }
+                },
+            }).padded().boxed();
+
         let def_or_implicit = expr
             .clone()
             .then_ignore(just('='))
@@ -96,7 +124,11 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                 },
             });
 
-        choice((def_or_implicit, expr)).then(just(';').repeated().at_least(1)).foldl(|lhs, _| lhs).padded().boxed()
+        choice((def_or_implicit, expr, folder))
+            .then(just(';').repeated().at_least(1))
+            .foldl(|lhs, _| lhs)
+            .padded()
+            .boxed()
     });
 
     decl.then_ignore(end())

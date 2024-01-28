@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::{Deref, Range};
 use std::sync::Mutex;
+use rocket::log::private::info;
 
 pub mod graph_state;
 
@@ -93,8 +94,10 @@ pub fn compile(
                     folder_id: None,
                     id: gen_id().to_string(),
                 });
-                latex.clear();
-                latex.push_str(&compile1(then, vars, funcs, fold_id)?);
+                for expr in compile(then, vars, funcs, fold_id)? {
+                    println!("mark");
+                    all_latex.push(expr);
+                }
             }
         }
 
@@ -112,25 +115,23 @@ pub fn compile(
             });
 
             for expr in body {
-                latex.clear();
-                latex.push_str(&compile1(expr, vars, funcs, fold_id)?)
+                for exp in compile(expr, vars, funcs, fold_id)? {
+                    all_latex.push(exp);
+                }
             }
 
             if let Some(then) = then {
-                all_latex.push(Latex {
-                    inner: latex.clone(),
-                    folder_id: None,
-                    id: gen_id().to_string(),
-                });
-                latex.clear();
-                latex.push_str(&compile1(then, vars, funcs, fold_id)?);
+                *fold_id = None;
+
+                for expr in compile(then, vars, funcs, fold_id)? {
+                    println!("mark");
+                    all_latex.push(expr);
+                }
             }
         }
     }
 
     if !latex.is_empty() {
-        // For whatever reason just taking a reference here doesn't work;
-        // Frankly, as_str is more verbose, so idk why I don't use it
         all_latex.push(Latex {
             inner: latex.clone(),
             folder_id: None,

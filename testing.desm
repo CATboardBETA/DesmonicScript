@@ -1,1 +1,10 @@
-fold "Folder" { 3+2; };
+fold TTTT {
+    y=4+2*x;
+    y=x*x;
+}
+y=2;
+fold Folder {
+    x=2-x;
+    x*x+y*y=r;
+    r=3;
+}

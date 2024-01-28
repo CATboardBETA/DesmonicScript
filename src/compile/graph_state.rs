@@ -11,28 +11,23 @@ pub trait ToGraphStateJson {
 
 impl ToGraphStateJson for Vec<Latex> {
     //noinspection SpellCheckingInspection
-    fn into_graph_state(self) -> Value {
-        let mut folders = self
-            .iter()
-            .filter(|l: &&Latex| l.inner == "\\folder".to_owned())
-            .map(|l: &Latex| Expression::Folder {
-                id: l.clone().id,
-                title: {
-                    let s = l.inner.trim_start_matches("\\folder");
-                    if s.is_empty() {
-                        None
-                    } else {
-                        Some(s.to_owned())
-                    }
-                },
-                other: Default::default(),
-            })
-            .collect::<Vec<_>>();
+    fn into_graph_state(mut self) -> Value {
+        let mut expressions = vec![];
+        self.retain(|l: &Latex| {
+            if l.inner.starts_with("\\folder ") {
+                expressions.push(Expression::Folder {
+                    id: l.id.to_string(),
+                    title: Some(l.inner.trim_start_matches("\\folder").to_owned()),
+                    other: Default::default(),
+                })
+            }
 
-        let mut expressions = self
-            .iter()
+            !l.inner.starts_with("\\folder ")
+        });
+
+        let mut new_expressions = self.iter()
             .map(|l: &Latex| Expression::Expression {
-                id: (&l).id.parse().expect("Failed to parse id"),
+                id: l.id.parse().expect("Failed to parse id"),
                 latex: Some(l.clone().inner),
                 color: None,
                 folder_id: l.clone().folder_id,
@@ -40,7 +35,7 @@ impl ToGraphStateJson for Vec<Latex> {
             })
             .collect::<Vec<_>>();
 
-        expressions.append(&mut folders);
+        expressions.append(&mut new_expressions);
 
         to_value(GraphState {
             version: 11,
@@ -104,11 +99,10 @@ pub struct ViewportMeta {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Expression {
     Expression {
-        //TODO: make Serialize impl compatible again
-        #[serde(deserialize_with = "deserialize_id")]
-        id: u32,
+        id: String,
         latex: Option<String>,
         color: Option<Color>,
+        #[serde(rename = "folderId")]
         folder_id: Option<String>,
         #[serde(flatten)]
         other: HashMap<String, Value>,
@@ -122,12 +116,7 @@ pub enum Expression {
     #[serde(rename = "text")]
     Comment { id: String, text: String },
 }
-fn deserialize_id<'de, D>(deserializer: D) -> Result<u32, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    deserializer.deserialize_str(StrIntVisitor {})
-}
+
 pub struct StrIntVisitor;
 impl<'de> Visitor<'de> for StrIntVisitor {
     type Value = u32;

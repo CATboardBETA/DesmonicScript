@@ -84,20 +84,26 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
     });
 
     let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
-        let decl_t = decl.clone().repeated().at_most(1);
-
         let folder = text::keyword("fold")
             .ignore_then(
-                none_of("\\\"")
-                    .repeated()
-                    .collect::<String>()
-                    .delimited_by(just('"'), just('"'))
+                filter(|c: &char| {
+                    c.is_ascii_alphabetic()
+                        || *c == ' '
+                        || *c == '_'
+                        || *c == '`'
+                        || *c == '"'
+                        || *c == '\''
+                })
+                .repeated()
+                .collect::<String>()
+                .padded(),
             )
-            .then(decl.repeated().delimited_by(just('{'), just('}')))
-            .then(decl_t.clone())
+            .then(decl.clone().repeated().delimited_by(just('{'), just('}')))
+            .then(decl.clone().repeated().at_most(1).clone())
+            .padded()
             .map(|((title, body), then)| Expr::Fol {
-                title: dbg!(title),
-                body: dbg!(body),
+                title,
+                body,
                 then: {
                     if then.len() == 1 {
                         Some(Box::new(then[0].clone()))
@@ -105,13 +111,15 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                         None
                     }
                 },
-            }).padded().boxed();
+            })
+            .boxed();
 
         let def_or_implicit = expr
             .clone()
             .then_ignore(just('='))
             .then(expr.clone())
-            .then(decl_t)
+            .then_ignore(just(';'))
+            .then(decl.repeated().at_most(1))
             .map(|((left, right), then)| Expr::Def {
                 left: Box::new(left),
                 right: Box::new(right),
@@ -124,11 +132,13 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                 },
             });
 
-        choice((def_or_implicit, expr, folder))
-            .then(just(';').repeated().at_least(1))
-            .foldl(|lhs, _| lhs)
-            .padded()
-            .boxed()
+        choice((
+            folder,
+            def_or_implicit,
+            expr,
+        ))
+        .padded()
+        .boxed()
     });
 
     decl.then_ignore(end())

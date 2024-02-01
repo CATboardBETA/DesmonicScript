@@ -12,30 +12,33 @@ pub trait ToGraphStateJson {
 impl ToGraphStateJson for Vec<Latex> {
     //noinspection SpellCheckingInspection
     fn into_graph_state(mut self) -> Value {
-        let mut expressions = vec![];
-        self.retain(|l: &Latex| {
-            if l.inner.starts_with("\\folder ") {
-                expressions.push(Expression::Folder {
-                    id: l.id.to_string(),
-                    title: Some(l.inner.trim_start_matches("\\folder").to_owned()),
-                    other: Default::default(),
-                })
-            }
-
-            !l.inner.starts_with("\\folder ")
-        });
-
-        let mut new_expressions = self.iter()
-            .map(|l: &Latex| Expression::Expression {
-                id: l.id.parse().expect("Failed to parse id"),
-                latex: Some(l.clone().inner),
-                color: None,
-                folder_id: l.clone().folder_id,
-                other: Default::default(),
+        let expressions = self
+            .iter()
+            .map(|l: &Latex| {
+                if l.inner.starts_with("\\folder ") {
+                    Expression::Folder {
+                        id: l.id.to_string(),
+                        title: {
+                            let s = l.inner.trim_start_matches("\\folder ");
+                            if s.is_empty() {
+                                None
+                            } else {
+                                Some(s.to_owned())
+                            }
+                        },
+                        other: Default::default(),
+                    }
+                } else {
+                    Expression::Expression {
+                        id: l.id.parse().expect("Failed to parse id"),
+                        latex: Some(l.clone().inner),
+                        color: None,
+                        folder_id: l.clone().folder_id,
+                        other: Default::default(),
+                    }
+                }
             })
             .collect::<Vec<_>>();
-
-        expressions.append(&mut new_expressions);
 
         to_value(GraphState {
             version: 11,

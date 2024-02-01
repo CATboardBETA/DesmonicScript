@@ -29,7 +29,7 @@ fn main() {
     match parser::parser().parse(src) {
         Ok(tk) => {
             tok = tk.clone();
-            println!("{tk:?}")
+            println!("{tk:#?}");
         }
         Err(e) => {
             for err in e {
@@ -52,10 +52,9 @@ fn main() {
         &tok,
         &mut vec!["x".to_owned(), "y".to_owned()],
         &mut HashMap::new(),
-        &mut None,
+        None,
     )
     .unwrap();
-    println!("{:#?}", compiled.iter().map(|i: &Latex| i.inner.clone()));
     *DATA_OUT.lock().unwrap() = compiled.into_graph_state();
     start_server().unwrap();
 }

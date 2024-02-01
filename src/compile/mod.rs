@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::{Deref, Range};
 use std::sync::Mutex;
-use rocket::log::private::info;
 
 pub mod graph_state;
 
@@ -25,7 +24,7 @@ pub fn compile(
     expr: &Expr,
     vars: &mut Vec<String>,
     funcs: &mut HashMap<String, Expr>,
-    fold_id: &mut Option<u32>,
+    mut fold_id: Option<u32>,
 ) -> Result<Vec<Latex>, String> {
     let mut all_latex = vec![];
 
@@ -95,7 +94,6 @@ pub fn compile(
                     id: gen_id().to_string(),
                 });
                 for expr in compile(then, vars, funcs, fold_id)? {
-                    println!("mark");
                     all_latex.push(expr);
                 }
             }
@@ -106,7 +104,7 @@ pub fn compile(
                 return Err("Cannot create a folder inside a folder!".to_owned());
             }
 
-            *fold_id = Some(gen_id());
+            fold_id = Some(gen_id());
 
             all_latex.push(Latex {
                 inner: format!("\\folder {title}"),
@@ -116,15 +114,18 @@ pub fn compile(
 
             for expr in body {
                 for exp in compile(expr, vars, funcs, fold_id)? {
-                    all_latex.push(exp);
+                    all_latex.push(Latex {
+                        inner: exp.inner,
+                        folder_id: fold_id.map(|x| x.to_string()),
+                        id: gen_id().to_string(),
+                    });
                 }
             }
 
             if let Some(then) = then {
-                *fold_id = None;
+                fold_id = None;
 
                 for expr in compile(then, vars, funcs, fold_id)? {
-                    println!("mark");
                     all_latex.push(expr);
                 }
             }
@@ -151,7 +152,7 @@ fn compile1(
     expr: &Expr,
     vars: &mut Vec<String>,
     funcs: &mut HashMap<String, Expr>,
-    fold_id: &mut Option<u32>,
+    fold_id: Option<u32>,
 ) -> Result<String, String> {
     let comp = compile(expr, vars, funcs, fold_id)?;
 
@@ -168,7 +169,7 @@ fn display_params(
     params: &Vec<Expr>,
     vars: &mut Vec<String>,
     funcs: &mut HashMap<String, Expr>,
-    fold_id: &mut Option<u32>,
+    fold_id: Option<u32>,
 ) -> Result<String, String> {
     let mut out = "".to_owned();
 

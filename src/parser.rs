@@ -86,31 +86,19 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
     let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
         let folder = text::keyword("fold")
             .ignore_then(
-                filter(|c: &char| {
-                    c.is_ascii_alphabetic()
-                        || *c == ' '
-                        || *c == '_'
-                        || *c == '`'
-                        || *c == '"'
-                        || *c == '\''
-                })
-                .repeated()
-                .collect::<String>()
-                .padded(),
+                none_of("\"")
+                    .repeated()
+                    .delimited_by(just("\""), just("\""))
+                    .collect::<String>()
+                    .padded(),
             )
             .then(decl.clone().repeated().delimited_by(just('{'), just('}')))
-            .then(decl.clone().repeated().at_most(1).clone())
+            .then(decl.clone().or_not())
             .padded()
             .map(|((title, body), then)| Expr::Fol {
                 title,
                 body,
-                then: {
-                    if then.len() == 1 {
-                        Some(Box::new(then[0].clone()))
-                    } else {
-                        None
-                    }
-                },
+                then: then.map(Box::new),
             })
             .boxed();
 
@@ -119,26 +107,14 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             .then_ignore(just('='))
             .then(expr.clone())
             .then_ignore(just(';'))
-            .then(decl.repeated().at_most(1))
+            .then(decl.or_not())
             .map(|((left, right), then)| Expr::Def {
                 left: Box::new(left),
                 right: Box::new(right),
-                then: {
-                    if then.len() == 1 {
-                        Some(Box::new(then[0].clone()))
-                    } else {
-                        None
-                    }
-                },
+                then: then.map(Box::new),
             });
 
-        choice((
-            folder,
-            def_or_implicit,
-            expr,
-        ))
-        .padded()
-        .boxed()
+        choice((folder, def_or_implicit, expr)).padded().boxed()
     });
 
     decl.then_ignore(end())

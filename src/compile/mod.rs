@@ -130,6 +130,38 @@ pub fn compile(
                 }
             }
         }
+        Expr::Fun {
+            name,
+            args,
+            body,
+            returns,
+            then
+        } => {
+            let fold_id = gen_id();
+
+            // Create the folder for helper functions
+            all_latex.push(Latex {
+                inner: format!("\\folder {name}"),
+                folder_id: None,
+                id: fold_id.to_string(),
+            });
+
+            // Verify that all body elements are Expr::Def
+            for bod in body {
+                if let Expr::Def { .. } = bod {
+                    let compiled = compile(bod, vars, funcs, Some(fold_id)).unwrap();
+                    compiled.iter().for_each(|s| {
+                        all_latex.push(Latex {
+                            inner: s.inner.clone(),
+                            folder_id: Some(fold_id.to_string()),
+                            id: gen_id().to_string(),
+                        })
+                    });
+                } else {
+                    return Err("All but last statement in function must be definition.".to_owned());
+                }
+            }
+        }
     }
 
     if !latex.is_empty() {

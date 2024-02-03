@@ -1,8 +1,4 @@
-fold "TTTT" {
-    y=4+2*x;
-    y=x*x;
-}
-y=x;
-fold "F" {
-    x=3;
+fn func(r) {
+    g=r*r;
+    x*x+y*y=g;
 }

@@ -28,6 +28,14 @@ pub enum Expr {
 
     // Function
     Call(String, Vec<Expr>),
+    Fun {
+        name: String,
+        args: Vec<String>,
+        /// Constrained to Expr::Def
+        body: Vec<Expr>,
+        returns: Box<Expr>,
+        then: Option<Box<Expr>>,
+    },
 }
 
 pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
@@ -44,7 +52,7 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             .or(ident
                 .then(
                     expr.separated_by(just(','))
-                        .allow_trailing() // Foo is Rust-like, so allow trailing commas to appear in arg lists
+                        .allow_trailing()
                         .delimited_by(just('('), just(')')),
                 )
                 .map(|(f, args)| Expr::Call(f, args))
@@ -84,6 +92,36 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
     });
 
     let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
+        let function = text::keyword("fn")
+            .padded()
+            .ignore_then(text::ident())
+            .padded()
+            .then(
+                text::ident()
+                    .separated_by(just(','))
+                    .allow_trailing()
+                    .delimited_by(just('('), just(')')),
+            )
+            .padded()
+            .then(
+                decl.clone()
+                    .repeated()
+                    .at_least(1)
+                    .delimited_by(just('{'), just('}')),
+            )
+            .padded()
+            .then(decl.clone().or_not())
+            .map(|(((name, args), body), then)| {
+                Expr::Fun {
+                    name,
+                    args,
+                    body,
+                    returns: Box::new(Expr::Num(0.0)),
+                    then: then.map(Box::new),
+                }
+            })
+            .boxed();
+
         let folder = text::keyword("fold")
             .ignore_then(
                 none_of("\"")
@@ -114,8 +152,11 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                 then: then.map(Box::new),
             });
 
-        choice((folder, def_or_implicit, expr)).padded().boxed()
+        choice((folder, function, def_or_implicit, expr))
+            .padded()
+            .boxed()
     });
 
     decl.then_ignore(end())
 }
+

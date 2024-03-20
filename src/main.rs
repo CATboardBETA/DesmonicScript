@@ -25,11 +25,10 @@ fn main() {
     let src = std::fs::read_to_string(src_f).unwrap();
     let src = src.as_str();
 
-    let tok;
+    let mut tok;
     match parser::parser().parse(src) {
         Ok(tk) => {
             tok = tk.clone();
-            println!("{tk:#?}");
         }
         Err(e) => {
             for err in e {
@@ -49,7 +48,7 @@ fn main() {
     }
 
     let compiled = compile(
-        &tok,
+        &mut tok,
         &mut vec!["x".to_owned(), "y".to_owned()],
         &mut HashMap::new(),
         None,

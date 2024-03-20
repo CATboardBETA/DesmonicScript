@@ -1,11 +1,11 @@
 use crate::parser::Expr;
 use crate::SRC_F;
 use ariadne::{Report, ReportKind, Source};
-use rocket::form::validate::Contains;
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::{Deref, Range};
 use std::sync::Mutex;
+use chumsky::chain::Chain;
 
 pub mod graph_state;
 
@@ -20,8 +20,9 @@ pub struct Latex {
     pub id: String,
 }
 
+//noinspection ALL
 pub fn compile(
-    expr: &Expr,
+    expr: &mut Expr,
     vars: &mut Vec<String>,
     funcs: &mut HashMap<String, Expr>,
     mut fold_id: Option<u32>,
@@ -34,7 +35,7 @@ pub fn compile(
         Expr::Num(val) => latex.push_str(&val.to_string()),
         Expr::Call(name, params) => latex.push_str(&format!(
             r"{}\left({}\right)",
-            if funcs.keys().collect::<Vec<_>>().contains(name) {
+            if funcs.keys().collect::<Vec<_>>().contains(&name.deref()) {
                 subscriptify(name)
             } else if BUILTINS.contains(&name.as_str()) {
                 operatorname(name)
@@ -78,13 +79,8 @@ pub fn compile(
             compile1(ex2, vars, funcs, fold_id)?
         )),
         Expr::Def { left, right, then } => {
-            latex.push_str(&format!(
-                r"{}={}",
-                compile1(left, vars, funcs, fold_id)?,
-                compile1(right, vars, funcs, fold_id)?
-            ));
             // If it is just a variable on the lhs, set that var as defined.
-            if let Expr::Var(name) = right.deref() {
+            if let Expr::Var(name) = *left.clone() {
                 vars.push(name.to_string());
             }
             if let Some(then) = then {
@@ -97,6 +93,11 @@ pub fn compile(
                     all_latex.push(expr);
                 }
             }
+            latex.push_str(&format!(
+                r"{}={}",
+                compile1(left, vars, funcs, fold_id)?,
+                compile1(right, vars, funcs, fold_id)?
+            ));
         }
 
         Expr::Fol { title, body, then } => {
@@ -134,31 +135,36 @@ pub fn compile(
             name,
             args,
             body,
-            returns,
-            then
+            then,
         } => {
             let fold_id = gen_id();
 
-            // Create the folder for helper functions
             all_latex.push(Latex {
                 inner: format!("\\folder {name}"),
                 folder_id: None,
                 id: fold_id.to_string(),
             });
 
-            // Verify that all body elements are Expr::Def
-            for bod in body {
-                if let Expr::Def { .. } = bod {
-                    let compiled = compile(bod, vars, funcs, Some(fold_id)).unwrap();
-                    compiled.iter().for_each(|s| {
-                        all_latex.push(Latex {
-                            inner: s.inner.clone(),
-                            folder_id: Some(fold_id.to_string()),
-                            id: gen_id().to_string(),
-                        })
-                    });
-                } else {
-                    return Err("All but last statement in function must be definition.".to_owned());
+            let mut our_vars = vars.clone();
+            our_vars.append(args);
+
+            let iter = ExprIterator(*body.clone(), 0);
+            let count = iter.clone().count();
+            for (i, mut body_item) in iter.enumerate() {
+                match body_item {
+                    Expr::Def { .. } => all_latex.push(Latex {
+                        inner: compile1(&mut body_item, &mut our_vars, funcs, Some(fold_id))?,
+                        folder_id: Some(fold_id.to_string()),
+                        id: gen_id().to_string()
+                    }),
+                    Expr::Fol { .. } => panic!("Cannot have a folder inside of a function!"),
+                    Expr::Fun { .. } => panic!("Cannot have a function inside of a function (for now)!"),
+                    _ if i == count => all_latex.push(Latex {
+                        inner: compile1(&mut body_item, &mut our_vars, funcs, Some(fold_id))?,
+                        folder_id: Some(fold_id.to_string()),
+                        id: gen_id().to_string()
+                    }),
+                    _ => panic!("Only final expression may be a non-def.")
                 }
             }
         }
@@ -175,39 +181,68 @@ pub fn compile(
     Ok(all_latex)
 }
 
+#[derive(Debug, Clone)]
+pub struct ExprIterator(Expr, usize);
+
+impl Iterator for ExprIterator {
+    type Item = Expr;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+        if self.1 == 0 { return Some(self.0.clone()) }
+
+        let mut n = 1;
+        let mut current = match self.0.clone() {
+            Expr::Def { then, .. } => then.clone(),
+            Expr::Fol { then, .. } => then.clone(),
+            Expr::Fun { then, .. } => then.clone(),
+            _ => None,
+        }?;
+        while n <= self.1 {
+            current = match *current {
+                Expr::Def { then, .. } => then.clone(),
+                Expr::Fol { then, .. } => then.clone(),
+                Expr::Fun { then, .. } => then.clone(),
+                _ => None,
+            }?;
+            n += 1;
+            dbg!(n);
+        }
+
+        *self = ExprIterator(*current.clone(), self.1);
+
+        Some(*current)
+    }
+}
+
+#[inline]
 fn operatorname(op: &String) -> String {
     format!("\\operatorname{{{op}}}")
 }
 
-// Compile, and if theres more than one latex output, output an error.
+// Compile, and if there's more than one latex output, output an error.
 fn compile1(
-    expr: &Expr,
+    expr: &mut Expr,
     vars: &mut Vec<String>,
     funcs: &mut HashMap<String, Expr>,
     fold_id: Option<u32>,
 ) -> Result<String, String> {
     let comp = compile(expr, vars, funcs, fold_id)?;
-
-    let len = comp.len();
-    if len != 1 {
-        Err(format!("Expected only one expression. Got {len}"))
-    } else {
-        // Unwrap is safe here since we checked above than the length is 1
-        Ok(comp.first().unwrap().clone().inner)
-    }
+    Ok(comp.first().unwrap().clone().inner)
 }
 
 fn display_params(
-    params: &Vec<Expr>,
+    params: &mut [Expr],
     vars: &mut Vec<String>,
     funcs: &mut HashMap<String, Expr>,
     fold_id: Option<u32>,
 ) -> Result<String, String> {
     let mut out = "".to_owned();
 
-    for (i, param) in params.iter().enumerate() {
+    let ln = params.len();
+    for (i, param) in params.iter_mut().enumerate() {
         let param = compile1(param, vars, funcs, fold_id)?;
-        if i < params.len() - 1 {
+        if i < ln - 1 {
             out.push_str(&format!("{param},"))
         } else {
             out.push_str(&param)

@@ -31,9 +31,7 @@ pub enum Expr {
     Fun {
         name: String,
         args: Vec<String>,
-        /// Constrained to Expr::Def
-        body: Vec<Expr>,
-        returns: Box<Expr>,
+        body: Box<Expr>,
         then: Option<Box<Expr>>,
     },
 }
@@ -103,22 +101,14 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                     .delimited_by(just('('), just(')')),
             )
             .padded()
-            .then(
-                decl.clone()
-                    .repeated()
-                    .at_least(1)
-                    .delimited_by(just('{'), just('}')),
-            )
+            .then(decl.clone().delimited_by(just('{'), just('}')))
             .padded()
             .then(decl.clone().or_not())
-            .map(|(((name, args), body), then)| {
-                Expr::Fun {
-                    name,
-                    args,
-                    body,
-                    returns: Box::new(Expr::Num(0.0)),
-                    then: then.map(Box::new),
-                }
+            .map(|(((name, args), body), then)| Expr::Fun {
+                name,
+                args,
+                body: Box::new(body),
+                then: then.map(Box::new),
             })
             .boxed();
 
@@ -159,4 +149,3 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
 
     decl.then_ignore(end())
 }
-

@@ -1,4 +1,3 @@
 fn func(r) {
-    g=r*r;
-    x*x+y*y=g;
+   g+r
 }

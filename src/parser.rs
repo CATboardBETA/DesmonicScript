@@ -5,6 +5,8 @@ use strum_macros::IntoStaticStr;
 pub enum Expr {
     Num(u32, u32),
     Var(String),
+    Pnt(Box<Expr>, Box<Expr>),
+    Lst(Vec<Expr>),
     Def {
         left: Box<Expr>,
         right: Box<Expr>,
@@ -59,13 +61,28 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             .or(expr.clone().delimited_by(just('('), just(')')).padded())
             .or(ident
                 .then(
-                    expr.separated_by(just(','))
+                    expr.clone()
+                        .separated_by(just(','))
                         .allow_trailing()
                         .delimited_by(just('('), just(')')),
                 )
                 .map(|(f, args)| Expr::Call(f, args))
                 .padded())
             .or(ident.map(Expr::Var).padded());
+        let atom = atom
+            .clone()
+            .or(expr
+                .clone()
+                .then_ignore(just(','))
+                .then(expr.clone())
+                .delimited_by(just('('), just(')'))
+                .map(|(x, y)| Expr::Pnt(Box::new(x), Box::new(y))))
+            .or(expr
+                .clone()
+                .separated_by(just(','))
+                .allow_trailing()
+                .delimited_by(just('['), just(']'))
+                .map(Expr::Lst));
 
         let op = |c: char| just(c).padded();
 

@@ -51,7 +51,7 @@ fn main() {
 
     let compiled = compile(
         &mut tok,
-        &mut vec!["x".to_owned(), "y".to_owned()],
+        &mut ["x", "y", "t"].iter().map(ToString::to_string).collect(),
         &mut vec![],
         None,
     )

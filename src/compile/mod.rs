@@ -11,7 +11,7 @@ pub mod graph_state;
 
 static CURRENT_ID: Mutex<u32> = Mutex::new(0);
 
-static BUILTINS: &[&str] = &["sin"];
+static BUILTINS: &[&str] = &["sin", "cos", "tan"];
 
 #[derive(Clone, Debug)]
 pub struct Latex {
@@ -159,7 +159,7 @@ pub fn compile(
                         map.insert(
                             Expr::Var(func.to_owned()),
                             Expr::Call(
-                                name.to_owned() + { 
+                                name.to_owned() + {
                                     let (first, rest) = func.split_at(1);
                                     &format!("{}{rest}", first.to_uppercase())
                                 },
@@ -206,6 +206,38 @@ pub fn compile(
                     _ => panic!("Only final expression may be a non-def.")
                 }
             }
+        }
+        Expr::Pnt(x, y) => {
+            all_latex.push(Latex {
+                inner: format!(
+                    "\\left({},{}\\right)",
+                    compile1(x, vars, funcs, fold_id)?,
+                    compile1(y, vars, funcs, fold_id)?
+                ),
+                folder_id: fold_id.map(|x| x.to_string()),
+                id: gen_id().to_string(),
+            });
+        }
+        Expr::Lst(items) => {
+            let mut inner = "\\left[".to_owned();
+            
+            let items_len = items.len();
+            for (i, item) in items.iter_mut().enumerate() {
+                let item = compile1(item, vars, funcs, fold_id)?;
+                if i < items_len {
+                    inner.push_str(&item);
+                    inner.push(',');
+                } else {
+                    inner.push_str(&item);
+                    inner.push_str("\\right]");
+                }
+            }
+            
+            all_latex.push(Latex {
+                inner,
+                folder_id: fold_id.map(|x| x.to_string()),
+                id: gen_id().to_string(),
+            });
         }
     }
 
@@ -319,6 +351,13 @@ impl ReplaceAll<Expr, Expr> for Expr {
                             then.replace_all(from_to);
                         }
                     }
+                    Expr::Pnt(x, y) => {
+                        x.replace_all(from_to);
+                        y.replace_all(from_to);
+                    }
+                    Expr::Lst(exprs) => for expr in exprs {
+                        expr.replace_all(from_to);
+                    }
                 }
             } else {
                 unimplemented!("expected a var in replace_all keys.")
@@ -392,9 +431,8 @@ fn subscriptify_with(ident: &str, plus: &str) -> String {
         first.to_owned()
     } else {
         format!("{first}_{{{rest}{}}}", {
-            
             let (first, rest) = plus.split_at(1);
-            
+
             format!("{}{rest}", first.to_uppercase())
         })
     }

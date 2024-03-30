@@ -1,8 +1,9 @@
 use chumsky::prelude::*;
+use strum_macros::IntoStaticStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IntoStaticStr, PartialEq, Hash, Eq)]
 pub enum Expr {
-    Num(f64),
+    Num(u32, u32),
     Var(String),
     Def {
         left: Box<Expr>,
@@ -39,10 +40,19 @@ pub enum Expr {
 pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
     let ident = text::ident().padded();
     let expr = recursive(|expr| {
-        let int = text::int(10)
-            .then(filter(|c: &char| *c == '.' || c.is_ascii_digit()).repeated())
-            .foldl(|l, r| l + &r.to_string())
-            .map(|s: String| Expr::Num(s.parse().unwrap()))
+        let int = filter(move |c: &char| c.is_ascii_digit())
+            .repeated()
+            .at_least(1)
+            .collect()
+            .then_ignore(filter(|c: &char| *c == '.').repeated().at_most(1))
+            .then(
+                filter(move |c: &char| c.is_ascii_digit())
+                    .repeated()
+                    .collect(),
+            )
+            .map(|(int, frac): (String, String)| {
+                Expr::Num(int.parse().unwrap(), frac.parse().unwrap_or(0))
+            })
             .padded();
 
         let atom = int

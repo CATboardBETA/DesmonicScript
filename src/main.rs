@@ -1,5 +1,8 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::too_many_lines)]
+
+use crate::compile::compile;
 use crate::compile::graph_state::ToGraphStateJson;
-use crate::compile::{compile, Latex};
 use ariadne::{Label, Report, ReportKind, Source, Span};
 use chumsky::prelude::Parser;
 use lazy_static::lazy_static;
@@ -7,7 +10,6 @@ use rocket::response::Responder;
 use rocket::serde::json::serde_json::json;
 use rocket::serde::json::Value;
 use rocket::{get, routes, Error, Ignite, Request, Response, Rocket};
-use std::collections::HashMap;
 use std::process::exit;
 use std::sync::Mutex;
 
@@ -50,7 +52,7 @@ fn main() {
     let compiled = compile(
         &mut tok,
         &mut vec!["x".to_owned(), "y".to_owned()],
-        &mut HashMap::new(),
+        &mut vec![],
         None,
     )
     .unwrap();

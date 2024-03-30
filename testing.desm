@@ -1,3 +1,5 @@
-fn func(r) {
-   g+r
+fn myAwesomeFunc(r) {
+    g=r*r;
+    f=r+2.2-g;
+    g+r*f
 }

@@ -11,7 +11,7 @@ pub trait ToGraphStateJson {
 
 impl ToGraphStateJson for Vec<Latex> {
     //noinspection SpellCheckingInspection
-    fn into_graph_state(mut self) -> Value {
+    fn into_graph_state(self) -> Value {
         let expressions = self
             .iter()
             .map(|l: &Latex| {
@@ -26,7 +26,7 @@ impl ToGraphStateJson for Vec<Latex> {
                                 Some(s.to_owned())
                             }
                         },
-                        other: Default::default(),
+                        other: HashMap::default(),
                     }
                 } else {
                     Expression::Expression {
@@ -34,7 +34,7 @@ impl ToGraphStateJson for Vec<Latex> {
                         latex: Some(l.clone().inner),
                         color: None,
                         folder_id: l.clone().folder_id,
-                        other: Default::default(),
+                        other: HashMap::default(),
                     }
                 }
             })
@@ -132,7 +132,7 @@ impl<'de> Visitor<'de> for StrIntVisitor {
         E: serde::de::Error,
     {
         v.parse()
-            .map_err(|_| E::custom(format!("failed to parse unsigned integer from {}", v)))
+            .map_err(|_| E::custom(format!("failed to parse unsigned integer from {v}")))
     }
 }
 #[derive(Debug, Clone, Copy)]

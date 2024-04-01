@@ -28,6 +28,7 @@ pub enum Expr {
     Div(Box<Expr>, Box<Expr>),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
+    Exp(Box<Expr>, Box<Expr>),
 
     // Function
     Call(String, Vec<Expr>),
@@ -90,14 +91,24 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             .repeated()
             .then(atom)
             .foldr(|_op, rhs| Expr::Neg(Box::new(rhs)));
+        
+        let exp = neg
+            .clone()
+            .then(
+                op('^')
+                    .to(Expr::Exp as fn(_, _) -> _)
+                    .then(neg)
+                    .repeated(),
+            )
+            .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
 
-        let product = neg
+        let product = exp
             .clone()
             .then(
                 op('*')
                     .to(Expr::Mul as fn(_, _) -> _)
                     .or(op('/').to(Expr::Div as fn(_, _) -> _))
-                    .then(neg)
+                    .then(exp)
                     .repeated(),
             )
             .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));

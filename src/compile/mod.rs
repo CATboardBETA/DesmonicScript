@@ -1,7 +1,6 @@
 use crate::parser::Expr;
 use crate::SRC_F;
 use ariadne::{Report, ReportKind, Source};
-use chumsky::chain::Chain;
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::ops::Range;
@@ -221,10 +220,10 @@ pub fn compile(
         Expr::Lst(items) => {
             let mut inner = "\\left[".to_owned();
             
-            let items_len = items.len();
+            let items_len = dbg!(items.len());
             for (i, item) in items.iter_mut().enumerate() {
                 let item = compile1(item, vars, funcs, fold_id)?;
-                if i < items_len {
+                if i < items_len - 1 {
                     inner.push_str(&item);
                     inner.push(',');
                 } else {
@@ -239,6 +238,7 @@ pub fn compile(
                 id: gen_id().to_string(),
             });
         }
+        Expr::Exp(bottom, top) => latex.push_str(&format!("{}^{{{}}}", compile1(bottom, vars, funcs, fold_id)?, compile1(top, vars, funcs, fold_id)?))
     }
 
     if !latex.is_empty() {
@@ -357,6 +357,10 @@ impl ReplaceAll<Expr, Expr> for Expr {
                     }
                     Expr::Lst(exprs) => for expr in exprs {
                         expr.replace_all(from_to);
+                    },
+                    Expr::Exp(bottom, top) => {
+                        bottom.replace_all(from_to);
+                        top.replace_all(from_to);
                     }
                 }
             } else {

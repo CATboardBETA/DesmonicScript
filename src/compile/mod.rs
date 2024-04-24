@@ -1,4 +1,4 @@
-use crate::parser::Expr;
+use crate::parser::{CompOp, Expr};
 use crate::SRC_F;
 use ariadne::{Report, ReportKind, Source};
 use std::collections::HashMap;
@@ -10,7 +10,125 @@ pub mod graph_state;
 
 static CURRENT_ID: Mutex<u32> = Mutex::new(0);
 
-static BUILTINS: &[&str] = &["sin", "cos", "tan"];
+static BUILTINS: &[&str] = &[
+    "exp",
+    "ln",
+    "log",
+    "total",
+    "length",
+    "count",
+    "mean",
+    "median",
+    "quantile",
+    "quartile",
+    "nCr",
+    "nPr",
+    "stats",
+    "stdev",
+    "stddev",
+    "",
+    "stdevp",
+    "stddevp",
+    "",
+    "mad",
+    "var",
+    "varp",
+    "variance",
+    "cov",
+    "covp",
+    "corr",
+    "spearman",
+    "lcm",
+    "mcm",
+    "gcd",
+    "mcd",
+    "gcf",
+    "mod",
+    "ceil",
+    "floor",
+    "round",
+    "abs",
+    "min",
+    "max",
+    "sign",
+    "signum",
+    "sgn",
+    "sin",
+    "cos",
+    "tan",
+    "csc",
+    "sec",
+    "cot",
+    "sinh",
+    "cosh",
+    "tanh",
+    "csch",
+    "sech",
+    "coth",
+    "arcsin",
+    "arccos",
+    "arctan",
+    "arccsc",
+    "arcsec",
+    "arccot",
+    "arcsinh",
+    "arccosh",
+    "arctanh",
+    "arccsch",
+    "arcsech",
+    "arccoth",
+    "arsinh",
+    "arcosh",
+    "artanh",
+    "arcsch",
+    "arsech",
+    "arcoth",
+    "polygon",
+    "distance",
+    "midpoint",
+    "sort",
+    "shuffle",
+    "join",
+    "unique",
+    "erf",
+    "TTest",
+    "ttest",
+    "TScore",
+    "tscore",
+    "iTTest",
+    "ittest",
+    "IndependentTTest",
+    "TScore",
+    "Tscore",
+    "tscore",
+    "normaldist",
+    "tdist",
+    "poissondist",
+    "binomialdist",
+    "uniformdist",
+    "pdf",
+    "cdf",
+    "random",
+    "inverseCdf",
+    "inversecdf",
+    "histogram",
+    "dotplot",
+    "boxplot",
+    "pdf",
+    "cdf",
+    "rgb",
+    "hsv",
+    "for",
+    "width",
+    "height",
+    "with",
+    "det",
+    "inv",
+    "transpose",
+    "rref",
+    "trace",
+    "tone",
+];
 
 #[derive(Clone, Debug)]
 pub struct Latex {
@@ -26,17 +144,22 @@ pub fn compile(
     funcs: &mut Vec<String>,
     mut fold_id: Option<u32>,
 ) -> Result<Vec<Latex>, String> {
+    let builtins = BUILTINS
+        .iter()
+        .map(|x: &&str| x.to_lowercase())
+        .collect::<Vec<_>>();
+
     let mut all_latex = vec![];
 
     let mut latex = String::new();
 
     match expr {
         Expr::Num(int, frac) => latex.push_str(&format!("{int}.{frac}")),
-        Expr::Call(name, params) => latex.push_str(&format!(
+        Expr::Cal(name, params) => latex.push_str(&format!(
             r"{}\left({}\right)",
             if funcs.contains(name) {
                 subscriptify(name)
-            } else if BUILTINS.contains(&name.as_str()) {
+            } else if builtins.contains(name) {
                 operatorname(name)
             } else {
                 return Err(format!("Function '{name}' does not exist!"));
@@ -157,7 +280,7 @@ pub fn compile(
                     for func in &new_funcs {
                         map.insert(
                             Expr::Var(func.to_owned()),
-                            Expr::Call(
+                            Expr::Cal(
                                 name.to_owned() + {
                                     let (first, rest) = func.split_at(1);
                                     &format!("{}{rest}", first.to_uppercase())
@@ -219,7 +342,7 @@ pub fn compile(
         }
         Expr::Lst(items) => {
             let mut inner = "\\left[".to_owned();
-            
+
             let items_len = dbg!(items.len());
             for (i, item) in items.iter_mut().enumerate() {
                 let item = compile1(item, vars, funcs, fold_id)?;
@@ -231,20 +354,122 @@ pub fn compile(
                     inner.push_str("\\right]");
                 }
             }
-            
+
             all_latex.push(Latex {
                 inner,
                 folder_id: fold_id.map(|x| x.to_string()),
                 id: gen_id().to_string(),
             });
         }
-        Expr::Exp(bottom, top) => latex.push_str(&format!("{}^{{{}}}", compile1(bottom, vars, funcs, fold_id)?, compile1(top, vars, funcs, fold_id)?))
+        Expr::Exp(bottom, top) => latex.push_str(&format!(
+            "{}^{{{}}}",
+            compile1(bottom, vars, funcs, fold_id)?,
+            compile1(top, vars, funcs, fold_id)?
+        )),
+        Expr::Neq {
+            left,
+            op1,
+            middle,
+            op2,
+            right,
+        } => {
+            let inner = format!(
+                "{}{}{}{}{}",
+                compile1(left, vars, funcs, fold_id)?,
+                match op1 {
+                    CompOp::Eq => "=",
+                    CompOp::Lt => "<",
+                    CompOp::Gt => ">",
+                    CompOp::Leq => "\\le",
+                    CompOp::Geq => "\\ge",
+                },
+                compile1(middle, vars, funcs, fold_id)?,
+                if let Some(op) = op2 {
+                    match op {
+                        CompOp::Eq => "=",
+                        CompOp::Lt => "<",
+                        CompOp::Gt => ">",
+                        CompOp::Leq => "\\le",
+                        CompOp::Geq => "\\ge",
+                    }
+                } else {
+                    ""
+                },
+                if let Some(right) = right {
+                    compile1(right, vars, funcs, fold_id)?
+                } else {
+                    String::new()
+                }
+            );
+
+            all_latex.push(Latex {
+                inner,
+                folder_id: fold_id.map(|x| x.to_string()),
+                id: gen_id().to_string(),
+            });
+        }
+        Expr::If {
+            cond,
+            body,
+            ref mut elif_conds,
+            ref mut elif_bodies,
+            else_body,
+        } => {
+            let mut elif_string = String::new();
+            for (i, elif_cond) in elif_conds.iter_mut().enumerate() {
+                elif_string.push_str(&format!(",{}:{}", compile1(elif_cond, vars, funcs, fold_id)?, compile1(&mut elif_bodies[i], vars, funcs, fold_id)?));
+            }
+            
+            let else_string;
+            if let Some(else_body) = else_body {
+                else_string = format!(",{}", compile1(else_body, vars, funcs, fold_id)?);
+            } else {
+                else_string = String::new();
+            }
+            
+            latex.push_str(&format!(
+                "\\left\\{{ {}:{} {} {}\\right\\}}",
+                compile1(cond, vars, funcs, fold_id)?,
+                compile1(body, vars, funcs, fold_id)?,
+                elif_string,
+                else_string
+            ));
+        }
+        Expr::Cond {
+            left,
+            op1,
+            middle,
+            op2,
+            right,
+        } => {
+            return Ok(vec![Latex {
+                inner: format!(
+                    "{}{}{}{}{}",
+                    compile1(left, vars, funcs, fold_id)?,
+                    Into::<&'static str>::into(*op1),
+                    compile1(middle, vars, funcs, fold_id)?,
+                    if let Some(op2) = op2 {
+                        (*op2).into()
+                    } else {
+                        ""
+                    },
+                    if let Some(right) = right {
+                        compile1(right, vars, funcs, fold_id)?
+                    } else {
+                        String::new()
+                    }
+                ),
+
+                folder_id: fold_id.map(|x| x.to_string()),
+                id: gen_id().to_string(),
+            }]);
+        }
     }
 
     if !latex.is_empty() {
         all_latex.push(Latex {
             inner: latex.clone(),
-            folder_id: None,
+            folder_id: fold_id.map(|x| x.to_string()),
             id: gen_id().to_string(),
         });
         latex.clear();
@@ -334,7 +559,7 @@ impl ReplaceAll<Expr, Expr> for Expr {
                         left.replace_all(from_to);
                         right.replace_all(from_to);
                     }
-                    Expr::Call(_name, exprs) => {
+                    Expr::Cal(_name, exprs) => {
                         for expr in exprs {
                             expr.replace_all(from_to);
                         }
@@ -355,12 +580,53 @@ impl ReplaceAll<Expr, Expr> for Expr {
                         x.replace_all(from_to);
                         y.replace_all(from_to);
                     }
-                    Expr::Lst(exprs) => for expr in exprs {
-                        expr.replace_all(from_to);
-                    },
+                    Expr::Lst(exprs) => {
+                        for expr in exprs {
+                            expr.replace_all(from_to);
+                        }
+                    }
                     Expr::Exp(bottom, top) => {
                         bottom.replace_all(from_to);
                         top.replace_all(from_to);
+                    }
+                    Expr::Neq {
+                        left,
+                        op1: _,
+                        middle,
+                        op2: _,
+                        right,
+                    } => {
+                        left.replace_all(from_to);
+                        middle.replace_all(from_to);
+                        if let Some(right) = right {
+                            right.replace_all(from_to);
+                        }
+                    }
+                    Expr::If {
+                        cond,
+                        body,
+                        elif_conds,
+                        elif_bodies,
+                        else_body,
+                    } => {
+                        cond.replace_all(from_to);
+
+                        for cond in elif_conds {
+                            cond.replace_all(from_to);
+                        }
+                    }
+                    Expr::Cond {
+                        left,
+                        op1: _,
+                        middle,
+                        op2: _,
+                        right,
+                    } => {
+                        left.replace_all(from_to);
+                        middle.replace_all(from_to);
+                        if let Some(right) = right {
+                            right.replace_all(from_to);
+                        }
                     }
                 }
             } else {
@@ -458,7 +724,7 @@ mod tests {
     #[test]
     fn test_replace_1() {
         let mut a = Expr::Var("a".to_owned());
-        let b = Expr::Call("mapped".to_owned(), vec![Num(0, 0)]);
+        let b = Expr::Cal("mapped".to_owned(), vec![Num(0, 0)]);
         let mut map = HashMap::new();
         map.insert(a.clone(), b.clone());
         a.replace_all(&map);

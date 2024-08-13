@@ -28,11 +28,8 @@ fn main() {
     let src = src.as_str();
 
     let mut tok;
-    match parser::parser().parse(src) {
-        Ok(tk) => {
-            tok = tk.clone();
-        }
-        Err(e) => {
+    match parser::parser().parse_recovery(src) {
+        (Some(tk), e) => {
             for err in e {
                 Report::build(ReportKind::Error, src_f, err.span().start())
                     .with_message(&format!(
@@ -45,9 +42,27 @@ fn main() {
                     .eprint((src_f, Source::from(src)))
                     .unwrap();
             }
+            tok = tk.clone();
+        }
+        (None, e) => {
+            for err in e {
+                Report::build(ReportKind::Error, src_f, err.span().start())
+                    .with_message(&format!(
+                        "Expected {:?}, but found {:?}!",
+                        err.expected().collect::<Vec<_>>(),
+                        err.found().unwrap_or(&'Ø')
+                    ))
+                    .with_label(Label::new((src_f, err.span())).with_message("Found here"))
+                    .finish()
+                    .eprint((src_f, Source::from(src)))
+                    .unwrap();
+            }
+            println!("Cannot recover! Exiting...");
             exit(1)
         }
     }
+
+    println!("{tok:#?}");
 
     let compiled = compile(
         &mut tok,

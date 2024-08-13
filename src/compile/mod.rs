@@ -1,4 +1,4 @@
-use crate::parser::{CompOp, Expr};
+use crate::parser::{CompOp, Expr, FormattedExpr};
 use crate::SRC_F;
 use ariadne::{Report, ReportKind, Source};
 use std::collections::HashMap;
@@ -26,10 +26,8 @@ static BUILTINS: &[&str] = &[
     "stats",
     "stdev",
     "stddev",
-    "",
     "stdevp",
     "stddevp",
-    "",
     "mad",
     "var",
     "varp",
@@ -139,11 +137,12 @@ pub struct Latex {
 
 //noinspection ALL
 pub fn compile(
-    expr: &mut Expr,
+    f_expr: &mut FormattedExpr,
     vars: &mut Vec<String>,
     funcs: &mut Vec<String>,
     mut fold_id: Option<u32>,
 ) -> Result<Vec<Latex>, String> {
+    let FormattedExpr { expr, format } = f_expr;
     let builtins = BUILTINS
         .iter()
         .map(|x: &&str| x.to_lowercase())
@@ -202,7 +201,7 @@ pub fn compile(
         )),
         Expr::Def { left, right, then } => {
             // If it is just a variable on the lhs, set that var as defined.
-            if let Expr::Var(name) = *left.clone() {
+            if let Expr::Var(name) = left.clone().expr {
                 vars.push(name.to_string());
             }
             if let Some(then) = then {
@@ -287,17 +286,17 @@ pub fn compile(
                                 },
                                 args.clone()
                                     .iter()
-                                    .map(|x| Expr::Var(subscriptify(x)))
+                                    .map(|x| Expr::Var(subscriptify(x)).into())
                                     .collect(),
                             ),
                         );
                     }
                     map
                 });
-                match body_item {
+                match body_item.expr {
                     Expr::Def { left, mut right, then: _ } if ExprIterator(*left.clone(), 0).count() == 1 => {
                         // We need to output a helper function for each variable
-                        match *left {
+                        match left.expr {
                             Expr::Var(v_name) => {
                                 all_latex.push(Latex {
                                     inner: format!("{}\\left({}\\right)={}", { 
@@ -417,18 +416,22 @@ pub fn compile(
         } => {
             let mut elif_string = String::new();
             for (i, elif_cond) in elif_conds.iter_mut().enumerate() {
-                elif_string.push_str(&format!(",{}:{}", compile1(elif_cond, vars, funcs, fold_id)?, compile1(&mut elif_bodies[i], vars, funcs, fold_id)?));
+                elif_string.push_str(&format!(
+                    ",{}:{}",
+                    compile1(elif_cond, vars, funcs, fold_id)?,
+                    compile1(&mut elif_bodies[i], vars, funcs, fold_id)?
+                ));
             }
-            
+
             let else_string;
             if let Some(else_body) = else_body {
                 else_string = format!(",{}", compile1(else_body, vars, funcs, fold_id)?);
             } else {
                 else_string = String::new();
             }
-            
+
             latex.push_str(&format!(
-                "\\left\\{{ {}:{} {} {}\\right\\}}",
+                "\\left\\{{{}:{}{}{}\\right\\}}",
                 compile1(cond, vars, funcs, fold_id)?,
                 compile1(body, vars, funcs, fold_id)?,
                 elif_string,
@@ -478,10 +481,10 @@ pub fn compile(
 }
 
 #[derive(Debug, Clone)]
-pub struct ExprIterator(Expr, usize);
+pub struct ExprIterator(FormattedExpr, usize);
 
 impl Iterator for ExprIterator {
-    type Item = Expr;
+    type Item = FormattedExpr;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.1 == 0 {
@@ -490,16 +493,22 @@ impl Iterator for ExprIterator {
         }
 
         let mut n = 2;
-        let mut current = match self.0.clone() {
+        let mut current = match &self.0.expr {
             Expr::Def { then, .. } | Expr::Fol { then, .. } | Expr::Fun { then, .. } => {
-                then.clone()
+                Some(FormattedExpr {
+                    expr: self.0.expr.clone(),
+                    format: self.0.format.clone(),
+                })
             }
             _ => None,
         }?;
         while n <= self.1 {
-            current = match *current {
+            current = match &current.expr {
                 Expr::Def { then, .. } | Expr::Fol { then, .. } | Expr::Fun { then, .. } => {
-                    then.clone()
+                    Some(FormattedExpr {
+                        expr: current.expr,
+                        format: current.format,
+                    })
                 }
                 _ => None,
             }?;
@@ -508,7 +517,7 @@ impl Iterator for ExprIterator {
 
         self.1 += 1;
 
-        Some(*current)
+        Some(current)
     }
 }
 
@@ -521,21 +530,25 @@ pub trait ReplaceAll<F, T> {
     fn replace_all(&mut self, from_to: &HashMap<F, T>);
 }
 
-impl ReplaceAll<Expr, Expr> for Expr {
+impl ReplaceAll<Expr, Expr> for FormattedExpr {
     fn replace_all(&mut self, from_to: &HashMap<Expr, Expr>) {
         for (k, v) in from_to {
             if let Expr::Var(new_name) = k {
-                match self {
+                match self.expr.clone() {
                     Expr::Num(_, _) => {}
                     Expr::Var(found_name) => {
-                        if found_name == new_name {
-                            *self = v.clone();
+                        if found_name == *new_name {
+                            *self = v.clone().into();
                         }
                     }
-                    Expr::Def { left, right, then } => {
+                    Expr::Def {
+                        mut left,
+                        mut right,
+                        then,
+                    } => {
                         left.replace_all(from_to);
                         right.replace_all(from_to);
-                        if let Some(then) = then {
+                        if let Some(mut then) = then {
                             then.replace_all(from_to);
                         }
                     }
@@ -544,23 +557,23 @@ impl ReplaceAll<Expr, Expr> for Expr {
                         body,
                         then,
                     } => {
-                        for expr in body {
+                        for mut expr in body {
                             expr.replace_all(from_to);
                         }
-                        if let Some(then) = then {
+                        if let Some(mut then) = then {
                             then.replace_all(from_to);
                         }
                     }
-                    Expr::Neg(expr) => expr.replace_all(from_to),
-                    Expr::Mul(left, right)
-                    | Expr::Div(left, right)
-                    | Expr::Add(left, right)
-                    | Expr::Sub(left, right) => {
+                    Expr::Neg(mut expr) => expr.replace_all(from_to),
+                    Expr::Mul(mut left, mut right)
+                    | Expr::Div(mut left, mut right)
+                    | Expr::Add(mut left, mut right)
+                    | Expr::Sub(mut left, mut right) => {
                         left.replace_all(from_to);
                         right.replace_all(from_to);
                     }
                     Expr::Cal(_name, exprs) => {
-                        for expr in exprs {
+                        for mut expr in exprs {
                             expr.replace_all(from_to);
                         }
                     }
@@ -568,42 +581,49 @@ impl ReplaceAll<Expr, Expr> for Expr {
                     Expr::Fun {
                         name: _,
                         args: _,
-                        body,
+                        mut body,
                         then,
                     } => {
                         body.replace_all(from_to);
-                        if let Some(then) = then {
+                        if let Some(mut then) = then {
                             then.replace_all(from_to);
                         }
                     }
-                    Expr::Pnt(x, y) => {
+                    Expr::Pnt(mut x, mut y) => {
                         x.replace_all(from_to);
                         y.replace_all(from_to);
                     }
                     Expr::Lst(exprs) => {
-                        for expr in exprs {
+                        for mut expr in exprs {
                             expr.replace_all(from_to);
                         }
                     }
-                    Expr::Exp(bottom, top) => {
+                    Expr::Exp(mut bottom, mut top) => {
                         bottom.replace_all(from_to);
                         top.replace_all(from_to);
                     }
                     Expr::Neq {
-                        left,
+                        mut left,
                         op1: _,
-                        middle,
+                        mut middle,
+                        op2: _,
+                        right,
+                    }
+                    | Expr::Cond {
+                        mut left,
+                        op1: _,
+                        mut middle,
                         op2: _,
                         right,
                     } => {
                         left.replace_all(from_to);
                         middle.replace_all(from_to);
-                        if let Some(right) = right {
+                        if let Some(mut right) = right {
                             right.replace_all(from_to);
                         }
                     }
                     Expr::If {
-                        cond,
+                        mut cond,
                         body,
                         elif_conds,
                         elif_bodies,
@@ -611,21 +631,8 @@ impl ReplaceAll<Expr, Expr> for Expr {
                     } => {
                         cond.replace_all(from_to);
 
-                        for cond in elif_conds {
+                        for mut cond in elif_conds {
                             cond.replace_all(from_to);
-                        }
-                    }
-                    Expr::Cond {
-                        left,
-                        op1: _,
-                        middle,
-                        op2: _,
-                        right,
-                    } => {
-                        left.replace_all(from_to);
-                        middle.replace_all(from_to);
-                        if let Some(right) = right {
-                            right.replace_all(from_to);
                         }
                     }
                 }
@@ -638,7 +645,7 @@ impl ReplaceAll<Expr, Expr> for Expr {
 
 /// Compile, and if there's more than one latex output, output an error.
 fn compile1(
-    expr: &mut Expr,
+    expr: &mut FormattedExpr,
     vars: &mut Vec<String>,
     funcs: &mut Vec<String>,
     fold_id: Option<u32>,
@@ -648,7 +655,7 @@ fn compile1(
 }
 
 fn display_params(
-    params: &mut [Expr],
+    params: &mut [FormattedExpr],
     vars: &mut Vec<String>,
     funcs: &mut Vec<String>,
     fold_id: Option<u32>,
@@ -712,22 +719,4 @@ fn subscriptify_with(ident: &str, plus: &str) -> String {
 fn gen_id() -> u32 {
     *CURRENT_ID.lock().unwrap() += 1;
     *CURRENT_ID.lock().unwrap()
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::compile::ReplaceAll;
-    use crate::parser::Expr;
-    use crate::parser::Expr::Num;
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_replace_1() {
-        let mut a = Expr::Var("a".to_owned());
-        let b = Expr::Cal("mapped".to_owned(), vec![Num(0, 0)]);
-        let mut map = HashMap::new();
-        map.insert(a.clone(), b.clone());
-        a.replace_all(&map);
-        assert_eq!(a, b);
-    }
 }

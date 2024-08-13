@@ -10,9 +10,9 @@ pub enum CompOp {
     Lt,
     #[strum(serialize = ">")]
     Gt,
-    #[strum(serialize = "\\le")]
+    #[strum(serialize = "\\le ")]
     Leq,
-    #[strum(serialize = "\\ge")]
+    #[strum(serialize = "\\ge ")]
     Geq,
 }
 
@@ -29,73 +29,93 @@ impl CompOp {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+pub struct FormattedExpr {
+    pub expr: Expr,
+    pub format: Option<String>,
+}
+
+impl From<Expr> for FormattedExpr {
+    fn from(e: Expr) -> FormattedExpr {
+        FormattedExpr {
+            expr: e,
+            format: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, IntoStaticStr, PartialEq, Hash, Eq)]
 pub enum Expr {
     Num(u32, u32),
     Var(String),
-    Pnt(Box<Expr>, Box<Expr>),
-    Lst(Vec<Expr>),
+    Pnt(Box<FormattedExpr>, Box<FormattedExpr>),
+    Lst(Vec<FormattedExpr>),
     Def {
-        left: Box<Expr>,
-        right: Box<Expr>,
-        then: Option<Box<Expr>>,
+        left: Box<FormattedExpr>,
+        right: Box<FormattedExpr>,
+        then: Option<Box<FormattedExpr>>,
     },
     Neq {
-        left: Box<Expr>,
+        left: Box<FormattedExpr>,
         op1: CompOp,
-        middle: Box<Expr>,
+        middle: Box<FormattedExpr>,
         op2: Option<CompOp>,
-        right: Option<Box<Expr>>,
+        right: Option<Box<FormattedExpr>>,
     },
     Fol {
         title: String,
-        body: Vec<Expr>,
-        then: Option<Box<Expr>>,
+        body: Vec<FormattedExpr>,
+        then: Option<Box<FormattedExpr>>,
     },
     If {
-        cond: Box<Expr>,
-        body: Box<Expr>,
-        elif_conds: Vec<Expr>,
-        elif_bodies: Vec<Expr>,
-        else_body: Option<Box<Expr>>,
+        cond: Box<FormattedExpr>,
+        body: Box<FormattedExpr>,
+        elif_conds: Vec<FormattedExpr>,
+        elif_bodies: Vec<FormattedExpr>,
+        else_body: Option<Box<FormattedExpr>>,
     },
     Cond {
-        left: Box<Expr>,
+        left: Box<FormattedExpr>,
         op1: CompOp,
-        middle: Box<Expr>,
+        middle: Box<FormattedExpr>,
         op2: Option<CompOp>,
-        right: Option<Box<Expr>>,
+        right: Option<Box<FormattedExpr>>,
     },
 
     // - Operations -
 
     // Unary
-    Neg(Box<Expr>),
+    Neg(Box<FormattedExpr>),
 
     // Binary
-    Mul(Box<Expr>, Box<Expr>),
-    Div(Box<Expr>, Box<Expr>),
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>),
-    Exp(Box<Expr>, Box<Expr>),
+    Mul(Box<FormattedExpr>, Box<FormattedExpr>),
+    Div(Box<FormattedExpr>, Box<FormattedExpr>),
+    Add(Box<FormattedExpr>, Box<FormattedExpr>),
+    Sub(Box<FormattedExpr>, Box<FormattedExpr>),
+    Exp(Box<FormattedExpr>, Box<FormattedExpr>),
 
     // Function
-    Cal(String, Vec<Expr>),
+    Cal(String, Vec<FormattedExpr>),
     Fun {
         name: String,
         args: Vec<String>,
-        body: Box<Expr>,
-        then: Option<Box<Expr>>,
+        body: Box<FormattedExpr>,
+        then: Option<Box<FormattedExpr>>,
     },
 }
-pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
+pub fn parser() -> impl Parser<char, FormattedExpr, Error = Simple<char>> {
     let ident = text::ident().padded();
-    let expr = recursive(|expr| {
 
-        let expr2 = expr.clone();
+    let format = text::keyword("formatted")
+        .ignore_then(filter(|c: &char| {
+            c.is_alphanumeric() || *c == '{' || *c == '}'
+        }))
+        .repeated()
+        .boxed();
+
+    let expr = recursive(|expr| {
         let ineq = |is_conditional: bool| {
-            expr2
-                .clone()
+            expr.clone()
                 .then(choice((
                     if is_conditional {
                         just("==").map(CompOp::from_str)
@@ -107,7 +127,7 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                     just("<").map(CompOp::from_str),
                     just(">").map(CompOp::from_str),
                 )))
-                .then(expr2.clone())
+                .then(expr.clone())
                 .then(
                     choice((
                         if is_conditional {
@@ -120,9 +140,10 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                         just("<").map(CompOp::from_str),
                         just(">").map(CompOp::from_str),
                     ))
-                        .or_not()
+                    .or_not(),
                 )
-                .then(expr2.clone().or_not())
+                .then(expr.clone().or_not())
+                .padded()
                 .boxed()
         };
 
@@ -144,31 +165,30 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                     .or_not(),
             )
             .map(|(((cond, body), elif), else_body)| Expr::If {
-                cond: Box::new(Expr::Cond {
+                cond: Box::new(FormattedExpr::from(Expr::Cond {
                     left: Box::new(cond.0 .0 .0 .0),
                     op1: cond.0 .0 .0 .1,
                     middle: Box::new(cond.0 .0 .1),
                     op2: cond.0 .1,
                     right: cond.1.map(Box::new),
-                }),
+                })),
                 body: Box::new(body),
                 elif_conds: elif
                     .iter()
                     .map(|x| {
                         let x = x.clone();
-                        Expr::Cond {
+                        FormattedExpr::from(Expr::Cond {
                             left: Box::new(x.0 .0 .0 .0 .0),
                             op1: x.0 .0 .0 .0 .1,
                             middle: Box::new(x.0 .0 .0 .1),
                             op2: x.0 .0 .1,
                             right: x.0 .1.map(Box::new),
-                        }
+                        })
                     })
                     .collect(),
                 elif_bodies: elif.iter().map(|x| x.1.clone()).collect(),
                 else_body: else_body.map(Box::new),
             });
-
 
         let int = filter(move |c: &char| c.is_ascii_digit())
             .repeated()
@@ -183,6 +203,10 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
             .map(|(int, frac): (String, String)| {
                 Expr::Num(int.parse().unwrap(), frac.parse().unwrap_or(0))
             })
+            .map(|num| FormattedExpr {
+                expr: num,
+                format: None,
+            })
             .padded();
 
         let atom = int
@@ -195,80 +219,64 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                         .delimited_by(just('('), just(')')),
                 )
                 .map(|(f, args)| Expr::Cal(f, args))
+                .map(|expr| FormattedExpr { expr, format: None })
                 .padded())
-            .or(iff)
-            .or(ident.map(Expr::Var).padded());
+            .or(iff.map(|expr| FormattedExpr { expr, format: None }))
+            .or(ident.map(|ident| FormattedExpr { expr: Expr::Var(ident), format: None}));
         let atom = atom
-            .clone()
             .or(expr
                 .clone()
                 .then_ignore(just(','))
                 .then(expr.clone())
                 .delimited_by(just('('), just(')'))
-                .map(|(x, y)| Expr::Pnt(Box::new(x), Box::new(y))))
+                .map(|(x, y)| Expr::Pnt(Box::new(x), Box::new(y)))
+                .map(|expr| FormattedExpr { expr, format: None }))
             .or(expr
                 .clone()
                 .separated_by(just(','))
                 .allow_trailing()
                 .delimited_by(just('['), just(']'))
-                .map(Expr::Lst));
+                .map(Expr::Lst)
+                .map(|expr| FormattedExpr { expr, format: None }));
 
         let op = |c: char| just(c).padded();
 
         let neg = op('-')
             .repeated()
             .then(atom)
-            .foldr(|_op, rhs| Expr::Neg(Box::new(rhs)));
+            .foldr(|_op, rhs| Expr::Neg(Box::new(rhs)).into())
+            .map(Into::into);
 
         let exp = neg
             .clone()
-            .then(op('^').to(Expr::Exp as fn(_, _) -> _).then(neg).repeated())
-            .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
+            .then(op('^').ignore_then(neg.clone()))
+            .map(|(lhs, rhs)| Expr::Exp(Box::new(lhs), Box::new(rhs)).into());
 
-        let product = exp
-            .clone()
-            .then(
-                op('*')
-                    .to(Expr::Mul as fn(_, _) -> _)
-                    .or(op('/').to(Expr::Div as fn(_, _) -> _))
-                    .then(exp)
-                    .repeated(),
-            )
-            .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
+        let product = choice((
+            neg.clone()
+                .then(op('*').ignore_then(neg.clone()))
+                .map(|(lhs, rhs)| Expr::Mul(Box::new(lhs), Box::new(rhs)).into()),
+            neg.clone()
+                .then(op('/').ignore_then(neg.clone()))
+                .map(|(lhs, rhs)| Expr::Div(Box::new(lhs), Box::new(rhs)).into()),
+        ));
 
-        let sum = product
-            .clone()
-            .then(
-                op('+')
-                    .to(Expr::Add as fn(_, _) -> _)
-                    .or(op('-').to(Expr::Sub as fn(_, _) -> _))
-                    .then(product)
-                    .repeated(),
-            )
-            .foldl(|lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)));
+        let sum = choice((
+            neg.clone()
+                .then(op('+').ignore_then(neg.clone()))
+                .map(|(lhs, rhs)| Expr::Add(Box::new(lhs), Box::new(rhs)).into()),
+            neg.clone()
+                .then(op('-').ignore_then(neg.clone()))
+                .map(|(lhs, rhs)| Expr::Sub(Box::new(lhs), Box::new(rhs)).into()),
+        ));
 
-        sum.boxed()
+        choice((neg, exp, product, sum))
     })
     .boxed();
-
-    let expr2 = expr.clone();
-    let ineq = |is_conditional: bool| {
-        expr2
-            .clone()
-            .then(choice((
-                if is_conditional {
-                    just("==").map(CompOp::from_str)
-                } else {
-                    just("=").map(CompOp::from_str)
-                },
-                just(">=").map(CompOp::from_str),
-                just("<=").map(CompOp::from_str),
-                just("<").map(CompOp::from_str),
-                just(">").map(CompOp::from_str),
-            )))
-            .then(expr2.clone())
-            .then(
-                choice((
+    let decl = recursive(|decl: Recursive<char, FormattedExpr, Simple<char>>| {
+        let ineq = |is_conditional: bool| {
+            expr.clone()
+                .then(choice((
                     if is_conditional {
                         just("==").map(CompOp::from_str)
                     } else {
@@ -278,14 +286,27 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                     just("<=").map(CompOp::from_str),
                     just("<").map(CompOp::from_str),
                     just(">").map(CompOp::from_str),
-                ))
-                .repeated()
-                .at_most(1),
-            )
-            .then(expr2.clone().repeated().at_most(1))
-            .boxed()
-    };
-    let decl = recursive(|decl: Recursive<char, Expr, Simple<char>>| {
+                )))
+                .then(expr.clone())
+                .then(
+                    choice((
+                        if is_conditional {
+                            just("==").map(CompOp::from_str)
+                        } else {
+                            just("=").map(CompOp::from_str)
+                        },
+                        just(">=").map(CompOp::from_str),
+                        just("<=").map(CompOp::from_str),
+                        just("<").map(CompOp::from_str),
+                        just(">").map(CompOp::from_str),
+                    ))
+                    .repeated()
+                    .at_most(1),
+                )
+                .then(expr.clone().repeated().at_most(1))
+                .boxed()
+        };
+
         let function = text::keyword("fn")
             .padded()
             .ignore_then(text::ident())
@@ -338,8 +359,6 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                 then: then.map(Box::new),
             });
 
-
-
         let ineq =
             ineq(false)
                 .then_ignore(just(';'))
@@ -351,10 +370,27 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
                     right: right.first().map(|x| Box::new(x.clone())),
                 });
 
-        
-        choice((folder, function, ineq, def_or_implicit, expr))
-            .padded()
-            .boxed()
+        choice((
+            folder.map(Into::into),
+            function.map(Into::into),
+            // ineq.map(Into::into),
+            def_or_implicit.map(Into::into),
+            expr,
+        ))
+        .then(format)
+        .map(|(expr, format): (FormattedExpr, Vec<char>)| FormattedExpr {
+            expr: expr.expr,
+            format: {
+                let format_str = String::from_iter(format);
+                if format_str.is_empty() {
+                    Some(format_str)
+                } else {
+                    None
+                }
+            },
+        })
+        .padded()
+        .boxed()
     });
 
     decl.then_ignore(end())

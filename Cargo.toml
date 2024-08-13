@@ -11,7 +11,7 @@ license = "GPL-3"
 
 [dependencies]
 rocket = { version = "0.5", features= ["json"] }
-chumsky = "0.9"
+chumsky = "0.9.3"
 ariadne = "0.4"
 lazy_static = "1.4.0"
 serde = "1.0.195"

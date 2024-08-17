@@ -122,8 +122,8 @@ pub fn parser() -> impl Parser<char, FormattedExpr, Error = Simple<char>> {
                     } else {
                         just("=").map(CompOp::from_str)
                     },
-                    just(">=").map(CompOp::from_str),
-                    just("<=").map(CompOp::from_str),
+                    just(">=").ignore_then(just(r"\\ge")).map(CompOp::from_str),
+                    just("<=").ignore_then(just(r"\\le")).map(CompOp::from_str),
                     just("<").map(CompOp::from_str),
                     just(">").map(CompOp::from_str),
                 )))
@@ -223,6 +223,7 @@ pub fn parser() -> impl Parser<char, FormattedExpr, Error = Simple<char>> {
                 .padded())
             .or(iff.map(|expr| FormattedExpr { expr, format: None }))
             .or(ident.map(|ident| FormattedExpr { expr: Expr::Var(ident), format: None}));
+
         let atom = atom
             .or(expr
                 .clone()
@@ -249,30 +250,31 @@ pub fn parser() -> impl Parser<char, FormattedExpr, Error = Simple<char>> {
 
         let exp = neg
             .clone()
-            .then(op('^').ignore_then(neg.clone()))
-            .map(|(lhs, rhs)| Expr::Exp(Box::new(lhs), Box::new(rhs)).into());
+            .then(op('^').ignore_then(neg.clone()).repeated())
+            .foldl(|lhs, rhs| Expr::Exp(Box::new(lhs), Box::new(rhs)).into());
 
         let product = choice((
-            neg.clone()
-                .then(op('*').ignore_then(neg.clone()))
-                .map(|(lhs, rhs)| Expr::Mul(Box::new(lhs), Box::new(rhs)).into()),
-            neg.clone()
-                .then(op('/').ignore_then(neg.clone()))
-                .map(|(lhs, rhs)| Expr::Div(Box::new(lhs), Box::new(rhs)).into()),
+            exp.clone()
+                .then(op('*').ignore_then(exp.clone()).repeated())
+                .foldl(|lhs, rhs| Expr::Mul(Box::new(lhs), Box::new(rhs)).into()),
+            exp.clone()
+                .then(op('/').ignore_then(exp.clone()).repeated())
+                .foldl(|lhs, rhs| Expr::Div(Box::new(lhs), Box::new(rhs)).into())
         ));
 
         let sum = choice((
-            neg.clone()
-                .then(op('+').ignore_then(neg.clone()))
-                .map(|(lhs, rhs)| Expr::Add(Box::new(lhs), Box::new(rhs)).into()),
-            neg.clone()
-                .then(op('-').ignore_then(neg.clone()))
-                .map(|(lhs, rhs)| Expr::Sub(Box::new(lhs), Box::new(rhs)).into()),
+            product.clone()
+                .then(op('+').ignore_then(product.clone()).repeated())
+                .foldl(|lhs, rhs| Expr::Add(Box::new(lhs), Box::new(rhs)).into()),
+            product.clone()
+                .then(op('-').ignore_then(product.clone()).repeated())
+                .foldl(|lhs, rhs| Expr::Sub(Box::new(lhs), Box::new(rhs)).into())
         ));
 
-        choice((neg, exp, product, sum))
+        sum
     })
     .boxed();
+    
     let decl = recursive(|decl: Recursive<char, FormattedExpr, Simple<char>>| {
         let ineq = |is_conditional: bool| {
             expr.clone()
@@ -373,9 +375,9 @@ pub fn parser() -> impl Parser<char, FormattedExpr, Error = Simple<char>> {
         choice((
             folder.map(Into::into),
             function.map(Into::into),
-            // ineq.map(Into::into),
+            ineq.map(Into::into),
             def_or_implicit.map(Into::into),
-            expr,
+            // expr,
         ))
         .then(format)
         .map(|(expr, format): (FormattedExpr, Vec<char>)| FormattedExpr {

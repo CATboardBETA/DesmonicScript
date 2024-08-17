@@ -22,7 +22,7 @@ lazy_static! {
     static ref SRC_F: String = std::env::args().nth(1).unwrap();
 }
 
-fn main() {
+fn  main() {
     let src_f = SRC_F.as_str();
     let src = std::fs::read_to_string(src_f).unwrap();
     let src = src.as_str();

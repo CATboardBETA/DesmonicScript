@@ -1,0 +1,41 @@
+WHITESPACE = _{ "\r" | " " | "\t" | "\n" }
+
+num           = @{ (ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)?) | ("." ~ ASCII_DIGIT+) }
+var           = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+_atom_no_list = _{ num | iff | var }
+_atom_point   = _{ _atom_no_list | p2 | p3 }
+_atom1        = _{ (_atom_no_list | _atom_point | list) }
+parens        =  { "(" ~ expr_in ~ ")" }
+sqrt          =  { "sqrt(" ~ expr_in ~ ")" }
+cbrt          =  { "cbrt(" ~ expr_in ~ ")" }
+nthrt         =  { "nthrt(" ~ expr_in ~ "," ~ expr_in ~ ")" }
+_atom         = _{ sqrt | cbrt | nthrt | _atom1 | parens }
+p2            =  { "(" ~ expr_in ~ "," ~ expr_in ~ ")" }
+p3            =  { "(" ~ (expr_in ~ ","){2} ~ expr_in ~ ")" }
+list          =  { "[" ~ ((list_expr ~ ",")* ~ list_expr ~ ","?)? ~ "]" }
+list_expr     = _{ expr_in | p2 | p3 }
+
+cmp         = @{ "<=" | ">=" | "<" | ">" | "=" }
+if_cmp      = @{ "<=" | ">=" | "<" | ">" | "==" }
+conditional =  { expr_in ~ if_cmp ~ expr_in ~ (if_cmp ~ expr_in)? }
+iff         =  { "if " ~ conditional ~ "{" ~ expr_in ~ "}" ~ elsee? }
+elsee       =  { ("else" ~ "{" ~ expr_in ~ "}") }
+unary_op    =  { "+" | "-" }
+exp_op      = @{ "^" }
+exp         =  { _atom ~ (exp_op ~ _atom)* }
+prod_op     = @{ "*" | "/" | "%" }
+prod        =  { exp ~ (prod_op ~ exp)* }
+sum_op      = @{ "+" | "-" }
+sum         =  { prod ~ (sum_op ~ prod)* }
+_expr       = _{ unary_op* ~ sum }
+expr_in     =  { _expr }
+expr_out    =  { _expr }
+
+implicit_explicit = { expr_in ~ cmp ~ expr_in }
+fold_name         = { (!"\"" ~ ANY)* }
+folder            = { "fold" ~ "\"" ~ fold_name ~ "\"" ~ "{" ~ ((implicit_explicit | expr_in) ~ ";")* ~ "}" }
+note_content      = { (!"\"" ~ ANY)* }
+note              = { "note" ~ "\"" ~ note_content ~ "\"" }
+
+OUT  = _{ ((implicit_explicit | expr_out) ~ ";" | folder | note) }
+file =  { SOI ~ OUT* ~ EOI }

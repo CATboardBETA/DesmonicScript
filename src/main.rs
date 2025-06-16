@@ -172,8 +172,16 @@ fn parse_one(rule: Pair<Rule>, vars: &mut Vec<String>, lines: &mut Vec<String>) 
             let val = parse_one(rule.into_inner().next().unwrap(), vars, lines);
             line += &format!("\\sqrt{{{val}}}")
         }
-        Rule::cbrt => {}
-        Rule::nthrt => {}
+        Rule::cbrt => {
+            let val = parse_one(rule.into_inner().next().unwrap(), vars, lines);
+            line += &format!("\\sqrt[3]{{{val}}}")
+        }
+        Rule::nthrt => {
+            let mut inner_rules = rule.into_inner();
+            let val = parse_one(inner_rules.next().unwrap(), vars, lines);
+            let n = parse_one(inner_rules.next().unwrap(), vars, lines);
+            line += &format!("\\sqrt[{n}]{{{val}}}")
+        }
         Rule::folder => {}
         Rule::note => {}
         _ => unreachable!(),
